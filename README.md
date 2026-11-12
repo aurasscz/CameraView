@@ -93,8 +93,10 @@ If your password contains special characters (`@ : / #`), use *Build URL* — it
 ## Development
 
 The web app is plain HTML/CSS/JavaScript with no build step. Serve `web/` with any static server, or just run the
-gateway (it serves `web/` at http://localhost:1984/). Pushing to `main` deploys `web/` to GitHub Pages via
-`.github/workflows/pages.yml`.
+gateway (it serves `web/` at http://localhost:1984/).
+
+GitHub Pages serves the `main` branch (Settings → Pages → *Deploy from a branch*, `main`, `/ (root)`).
+The root `index.html` redirects to `web/`, and `.nojekyll` turns off Jekyll processing.
 
 ## License
 
