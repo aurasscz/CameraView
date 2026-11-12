@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>CameraView</title>
+  <meta name="description" content="View RTSP cameras on your local network in the browser.">
+  <meta name="theme-color" content="#0e1116">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="icon.svg" alt="" width="28" height="28">
+      <span>CameraView</span>
+    </div>
+    <button id="gatewayPill" class="pill" type="button" title="Gateway status — click to open settings">
+      <span class="dot"></span><span id="gatewayText">Checking gateway…</span>
+    </button>
+    <div class="actions">
+      <label class="select-wrap" title="Grid layout">
+        <span class="sr-only">Layout</span>
+        <select id="layoutSelect">
+          <option value="auto">Auto grid</option>
+          <option value="1">1 column</option>
+          <option value="2">2 columns</option>
+          <option value="3">3 columns</option>
+          <option value="4">4 columns</option>
+        </select>
+      </label>
+      <button id="scanBtn" class="btn" type="button" title="Find ONVIF cameras on your network">Scan</button>
+      <button id="addBtn" class="btn primary" type="button">+ Add camera</button>
+      <button id="settingsBtn" class="btn icon" type="button" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.4-2.9a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <main>
+    <section id="grid" class="grid" aria-live="polite"></section>
+
+    <section id="empty" class="empty" hidden>
+      <h1>View your RTSP cameras in the browser</h1>
+      <p>Browsers can't open <code>rtsp://</code> streams directly, so CameraView uses a small local gateway
+        (<a href="https://github.com/AlexxIT/go2rtc" target="_blank" rel="noopener">go2rtc</a>) that converts RTSP into
+        WebRTC / MSE video. Nothing leaves your network.</p>
+      <ol class="steps">
+        <li>
+          <strong>Start the gateway</strong> on a computer on the same network as your cameras:
+          <pre><code>git clone https://github.com/aurasscz/CameraView
+cd CameraView
+./gateway/start.sh        # macOS / Linux
+# or: powershell -ExecutionPolicy Bypass -File gateway\start.ps1
+# or: docker compose up -d</code></pre>
+        </li>
+        <li><strong>Connect</strong> — the status pill at the top turns green when the gateway is reachable
+          (default <code>http://localhost:1984</code>; change it in Settings).</li>
+        <li><strong>Add a camera</strong> with its RTSP URL, or press <em>Scan</em> to find ONVIF cameras.</li>
+      </ol>
+      <button id="emptyAddBtn" class="btn primary" type="button">+ Add your first camera</button>
+    </section>
+  </main>
+
+  <!-- Add / edit camera -->
+  <dialog id="cameraDialog" class="dialog">
+    <form id="cameraForm" method="dialog">
+      <h2 id="cameraDialogTitle">Add camera</h2>
+      <label>Name
+        <input name="name" required maxlength="60" placeholder="Front door" autocomplete="off">
+      </label>
+
+      <fieldset class="tabs" role="tablist">
+        <label><input type="radio" name="inputMode" value="url" checked> Full URL</label>
+        <label><input type="radio" name="inputMode" value="builder"> Build URL</label>
+      </fieldset>
+
+      <div data-mode="url">
+        <label>Stream URL
+          <input name="url" placeholder="rtsp://user:password@192.168.1.20:554/stream1" autocomplete="off" spellcheck="false">
+        </label>
+        <p class="hint">Supports <code>rtsp://</code>, <code>rtsps://</code> and <code>onvif://</code> URLs.</p>
+      </div>
+
+      <div data-mode="builder" hidden>
+        <label>Camera type
+          <select name="preset"></select>
+        </label>
+        <div class="row">
+          <label class="grow">IP address / host
+            <input name="host" placeholder="192.168.1.20" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="port">Port
+            <input name="port" type="number" min="1" max="65535" value="554">
+          </label>
+        </div>
+        <div class="row">
+          <label class="grow">Username
+            <input name="user" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="grow">Password
+            <input name="pass" type="password" autocomplete="new-password">
+          </label>
+        </div>
+        <label>Path
+          <input name="path" placeholder="/stream1" autocomplete="off" spellcheck="false">
+        </label>
+        <p class="hint">Resulting URL: <code id="builtUrl">—</code></p>
+      </div>
+
+      <label class="check"><input type="checkbox" name="audio"> Play audio (starts muted)</label>
+
+      <p id="cameraError" class="error" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="testBtn">Test</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn primary" value="save">Save</button>
+      </div>
+      <div id="testPreview" class="test-preview" hidden>
+        <video muted playsinline></video>
+        <span class="test-status"></span>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Settings -->
+  <dialog id="settingsDialog" class="dialog">
+    <form id="settingsForm" method="dialog">
+      <h2>Settings</h2>
+      <label>Gateway URL
+        <input name="gateway" placeholder="http://localhost:1984" spellcheck="false" autocomplete="off">
+      </label>
+      <p class="hint">The address of your go2rtc gateway. <span id="gatewayHint"></span></p>
+      <label>Playback mode
+        <select name="mode">
+          <option value="auto">Auto (WebRTC, fall back to MSE)</option>
+          <option value="webrtc">WebRTC only</option>
+          <option value="mse">MSE only</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" name="pauseHidden"> Pause streams while this tab is hidden</label>
+      <div class="row wrap">
+        <button type="button" class="btn" id="exportBtn">Export cameras</button>
+        <label class="btn file-btn">Import cameras<input type="file" id="importInput" accept="application/json,.json" hidden></label>
+      </div>
+      <p class="hint">Camera URLs (including passwords) are stored only in this browser's local storage and sent only to your gateway.</p>
+      <div class="dialog-actions">
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button type="submit" class="btn primary" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Scan -->
+  <dialog id="scanDialog" class="dialog">
+    <form method="dialog">
+      <h2>Scan network</h2>
+      <p class="hint">Asks the gateway to look for ONVIF cameras on its local network. Not every camera supports ONVIF — you can always add one by its RTSP URL.</p>
+      <div id="scanResults" class="scan-results"></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn" id="rescanBtn">Scan again</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>Close</button>
+      </div>
+    </form>
+  </dialog>
+
+  <template id="tileTemplate">
+    <article class="tile" tabindex="0">
+      <video muted playsinline></video>
+      <div class="overlay top">
+        <span class="name"></span>
+        <span class="badge"></span>
+      </div>
+      <div class="status-msg"></div>
+      <div class="overlay bottom">
+        <button type="button" data-act="mute" title="Toggle sound" aria-label="Toggle sound">🔇</button>
+        <button type="button" data-act="snapshot" title="Save snapshot" aria-label="Save snapshot">📷</button>
+        <button type="button" data-act="reload" title="Reconnect" aria-label="Reconnect">⟳</button>
+        <button type="button" data-act="focus" title="Focus view" aria-label="Focus view">⛶</button>
+        <span class="spacer"></span>
+        <button type="button" data-act="edit" title="Edit" aria-label="Edit">✎</button>
+        <button type="button" data-act="delete" title="Remove" aria-label="Remove">🗑</button>
+      </div>
+    </article>
+  </template>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

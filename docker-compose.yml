@@ -1,0 +1,11 @@
+# CameraView gateway in Docker (Linux hosts).
+# host networking is needed for WebRTC (UDP) and ONVIF camera discovery.
+services:
+  go2rtc:
+    image: alexxit/go2rtc:latest
+    container_name: cameraview-gateway
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./gateway/go2rtc.yaml:/config/go2rtc.yaml
+      - ./web:/web:ro
